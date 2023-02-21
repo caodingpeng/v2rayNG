@@ -14,6 +14,8 @@ import android.text.TextUtils
 import android.view.KeyEvent
 import com.v2ray.ang.AppConfig
 import android.content.res.ColorStateList
+import android.os.Handler
+import android.os.Looper
 import com.google.android.material.navigation.NavigationView
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
@@ -24,6 +26,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
 import com.tencent.mmkv.MMKV
 import com.v2ray.ang.AppConfig.ANG_PACKAGE
@@ -44,6 +47,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedListener {
+
     private lateinit var binding: ActivityMainBinding
 
     private val adapter by lazy { MainRecyclerAdapter(this) }
@@ -196,7 +200,40 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
 
     public override fun onResume() {
         super.onResume()
+
+        val firstRun = getPreferences(MODE_PRIVATE).getBoolean(FirstRun, true);
+        if(firstRun) {
+            importBatchConfig("https://blockthis.xyz/api/v2rayng/tbURmTpFR1fFsEi9YHX1j5onOR6slwVT");
+            importConfigViaSub();
+
+            mainViewModel.reloadServerList()
+
+            getPreferences(MODE_PRIVATE).edit {
+                putBoolean(FirstRun, false);
+            }
+        }
+
+        val lastUpdateTime = getPreferences(MODE_PRIVATE).getLong(LastUpdateTime, 0);
+        if(System.currentTimeMillis() - lastUpdateTime > TimeUnit.DAYS.toMillis(1)){
+            importConfigViaSub();
+
+            getPreferences(MODE_PRIVATE).edit {
+                putLong(LastUpdateTime, System.currentTimeMillis())
+            }
+        }
+
         mainViewModel.reloadServerList()
+
+        if(mainViewModel.serverList.size>0) {
+            mainViewModel.testAllTcping()
+
+            Handler(Looper.getMainLooper()).postDelayed({
+                MmkvManager.sortByTestResults()
+                mainViewModel.reloadServerList()
+            }, 5000);
+        }else{
+            importConfigViaSub();
+        }
     }
 
     public override fun onPause() {
@@ -654,5 +691,10 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
         }
         binding.drawerLayout.closeDrawer(GravityCompat.START)
         return true
+    }
+
+    companion object {
+        public const val FirstRun: String = "firstRun";
+        public const val LastUpdateTime:String = "lastUpdateTime";
     }
 }
